@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include "constants.h"
+
+#define FOR_CPUDIAG 0
 
 typedef struct ConditionalCodes
 {
@@ -54,23 +57,25 @@ void InitializeMemory(State8080 *state)
 
 void ShowState(State8080 *state)
 {
-    uint8_t flags = (state->cc.s << 7) + (state->cc.z << 6) + (state->cc.ac << 4) + (state->cc.p << 2) + (1 << 1) + (state->cc.cy);
+    // uint8_t flags = (state->cc.s << 7) + (state->cc.z << 6) + (state->cc.ac << 4) + (state->cc.p << 2) + (1 << 1) + (state->cc.cy);
+    if (FOR_CPUDIAG != 1)
+    {
+        printf("\nSP: %02x\n", state->sp);
+        printf("PC: %02x\n", state->pc);
+        printf("A: %02x\n", state->a);
+        // printf("F: %02x\n", flags);
+        printf("B: %02x\n", state->b);
+        printf("C: %02x\n", state->c);
+        printf("D: %02x\n", state->d);
+        printf("E: %02x\n", state->e);
+        printf("H: %02x\n", state->h);
+        printf("L: %02x\n\n", state->l);
+        printf("Cycles: %d\n\n", state->cycles);
+        // printf("CALL/RET content: %02x%02x\n", state->memory[state->sp + 1], state->memory[state->sp]);
 
-    printf("\nSP: %02x\n", state->sp);
-    printf("PC: %02x\n", state->pc);
-    printf("A: %02x\n", state->a);
-    // printf("F: %02x\n", flags);
-    printf("B: %02x\n", state->b);
-    printf("C: %02x\n", state->c);
-    printf("D: %02x\n", state->d);
-    printf("E: %02x\n", state->e);
-    printf("H: %02x\n", state->h);
-    printf("L: %02x\n\n", state->l);
-    printf("Cycles: %d\n\n", state->cycles);
-    printf("CALL/RET content: %02x%02x\n", state->memory[state->sp + 1], state->memory[state->sp]);
-
-    printf("S  Z   AC   P   C\n");
-    printf("%x  %x   %x    %x   %x\n\n", state->cc.s, state->cc.z, state->cc.ac, state->cc.p, state->cc.cy);
+        printf("S  Z   AC   P   C\n");
+        printf("%x  %x   %x    %x   %x\n\n", state->cc.s, state->cc.z, state->cc.ac, state->cc.p, state->cc.cy);
+    }
 }
 
 void SetFlags(State8080 *state, uint16_t ops_result)
@@ -93,7 +98,11 @@ void UnimplementedInstruction(State8080 *state)
     printf("Instruction %02x not implemented yet.\n", *opcode);
 
     printf("\n\nState on unimplemented\n");
-    ShowState(state);
+
+    if (LOGS_CPU)
+    {
+        ShowState(state);
+    }
 
     exit(1);
 }
@@ -103,9 +112,10 @@ int Emulate8080(State8080 *state)
     int opbytes = 1;
     uint8_t *opcode = &state->memory[state->pc];
     uint16_t address;
-
-    printf("Executing opcode: %02x, PC is %02x\n", *opcode, state->pc);
-
+    if (LOGS_CPU)
+    {
+        printf("Executing opcode: %02x, PC is %02x\n", *opcode, state->pc);
+    }
     switch (*opcode)
     {
     case 0x00:
@@ -117,13 +127,13 @@ int Emulate8080(State8080 *state)
         // 0x01	LXI B,D16	3		B <- byte 3, C <- byte 2
         state->b = (state->memory[state->pc + 2]);
         state->c = (state->memory[state->pc + 1]);
-        printf("Changed BC to %02x%02x\n", state->b, state->c);
+        // printf("Changed BC to %02x%02x\n", state->b, state->c);
         opbytes = 3;
         state->cycles += 10;
         break;
-    case 0x05:
-        // 0x05	DCR B	1	Z, S, P, AC	B <- B-1
-        state->b -= 1;
+    case 0x04:
+        // 0x04	INR B	1	Z, S, P, AC	B <- B+1
+        state->b += 1;
 
         SetFlags(state, state->b);
 
@@ -132,12 +142,27 @@ int Emulate8080(State8080 *state)
         opbytes = 1;
         state->cycles += 10;
         break;
+    case 0x05:
+        // 0x05	DCR B	1	Z, S, P, AC	B <- B-1
+        state->b -= 1;
+
+        SetFlags(state, state->b);
+
+        // printf("%02x", (state->b & 0xF));
+
+        opbytes = 1;
+        state->cycles += 10;
+        break;
     case 0x06:
         // 0x06	MVI B, D8	2		B <- byte 2
         state->b = (state->memory[state->pc + 1]);
-        printf("Moved into B: %02x\n", state->b);
+        // printf("Moved into B: %02x\n", state->b);
         opbytes = 2;
         state->cycles += 7;
+        break;
+    case 0x08:
+        // 0x08	-
+        opbytes = 1;
         break;
     case 0x09:
         // 0x09	DAD B	1	CY	HL = HL + BC
@@ -171,7 +196,7 @@ int Emulate8080(State8080 *state)
     case 0x0e:
         // 0x0e	MVI C,D8	2		C <- byte 2
         state->c = (state->memory[state->pc + 1]);
-        printf("Moved into C: %02x\n", state->c);
+        // printf("Moved into C: %02x\n", state->c);
         opbytes = 2;
         state->cycles += 7;
         break;
@@ -188,11 +213,15 @@ int Emulate8080(State8080 *state)
         state->cycles += 1;
         break;
     }
+    case 0x10:
+        // 0x10	-
+        opbytes = 1;
+        break;
     case 0x11:
         // 0x11	LXI D,D16	3		D <- byte 3, E <- byte 2
         state->d = (state->memory[state->pc + 2]);
         state->e = (state->memory[state->pc + 1]);
-        printf("Changed DE to %02x%02x\n", state->d, state->e);
+        // printf("Changed DE to %02x%02x\n", state->d, state->e);
         opbytes = 3;
         state->cycles += 10;
         break;
@@ -217,6 +246,29 @@ int Emulate8080(State8080 *state)
 
         opbytes = 1;
         state->cycles += 10;
+        break;
+    case 0x16:
+        // 0x16	MVI D, D8	2		D <- byte 2
+        state->d = (state->memory[state->pc + 1]);
+        // printf("Moved into D: %02x\n", state->d);
+        opbytes = 2;
+        state->cycles += 7;
+        break;
+    case 0x17:
+        // 0x17	RAL	1	CY	A = A << 1; bit 0 = prev CY; CY = prev bit 7
+        {
+            uint8_t ral_temp = (state->a << 1) + state->cc.cy;
+
+            state->cc.cy = state->a & 0x01;
+            state->a = ral_temp;
+
+            opbytes = 1;
+            state->cycles += 4;
+            break;
+        }
+    case 0x18:
+        // 0x18	-
+        opbytes = 1;
         break;
     case 0x19:
         // 0x19	DAD D	1	CY	HL = HL + DE
@@ -258,33 +310,44 @@ int Emulate8080(State8080 *state)
         }
     case 0x1d:
         // 0x1d	DCR E	1	Z, S, P, AC	E <- E-1
-        state->e -= 1;
+        {
+            state->e -= 1;
 
-        SetFlags(state, state->e);
+            SetFlags(state, state->e);
 
-        opbytes = 1;
-        state->cycles += 10;
-        break;
-    case 0x16:
-        // 0x16	MVI D, D8	2		D <- byte 2
-        state->d = (state->memory[state->pc + 1]);
-        printf("Moved into D: %02x\n", state->d);
-        opbytes = 2;
-        state->cycles += 7;
-        break;
-
+            opbytes = 1;
+            state->cycles += 10;
+            break;
+        }
     case 0x1e:
         // 0x1e	MVI E,D8	2		E <- byte
         state->e = (state->memory[state->pc + 1]);
-        printf("Moved into E: %02x\n", state->e);
+        // printf("Moved into E: %02x\n", state->e);
         opbytes = 2;
         state->cycles += 7;
+        break;
+
+    case 0x1f:
+        // 0x1f	RAR	1	CY	A = A >> 1; bit 7 = prev bit 7; CY = prev bit 0
+        {
+            uint8_t rar_temp = (state->a >> 1) + ((state->cc.cy << 7) & 0x80);
+
+            state->cc.cy = state->a & 0x01;
+            state->a = rar_temp;
+
+            opbytes = 1;
+            state->cycles += 4;
+            break;
+        }
+    case 0x20:
+        // 0x20 -
+        opbytes = 1;
         break;
     case 0x21:
         // 0x21	LXI H,D16	3		H <- byte 3, L <- byte 2
         state->h = (state->memory[state->pc + 2]);
         state->l = (state->memory[state->pc + 1]);
-        printf("Changed HL to %02x%02x\n", state->h, state->l);
+        // printf("Changed HL to %02x%02x\n", state->h, state->l);
         state->cycles += 10;
         opbytes = 3;
         break;
@@ -313,7 +376,7 @@ int Emulate8080(State8080 *state)
     case 0x26:
         // 0x26	MVI H,D8	2		H <- byte 2
         state->h = (state->memory[state->pc + 1]);
-        printf("Moved into H: %02x\n", state->h);
+        // printf("Moved into H: %02x\n", state->h);
         opbytes = 2;
         state->cycles += 7;
         break;
@@ -338,6 +401,19 @@ int Emulate8080(State8080 *state)
             opbytes = 1;
             break;
         }
+    case 0x2b:
+    {
+        // 0x2b	DCX H	1		HL = HL-1
+        uint16_t hl_temp = (state->h << 8) + (state->l);
+        hl_temp -= 1;
+
+        state->l = hl_temp & 0xff;
+        state->h = (hl_temp >> 8) & 0xff;
+        state->cycles += 5;
+        opbytes = 1;
+        break;
+    }
+
     case 0x2d:
         // 0x2d	DCR L	1	Z, S, P, AC	L <- L-1
         state->l -= 1;
@@ -350,14 +426,18 @@ int Emulate8080(State8080 *state)
     case 0x2e:
         // 0x2e	MVI L, D8	2		L <- byte 2
         state->l = (state->memory[state->pc + 1]);
-        printf("Moved into L: %02x\n", state->l);
+        // printf("Moved into L: %02x\n", state->l);
         opbytes = 2;
         state->cycles += 7;
+        break;
+    case 0x30:
+        // 0x30	-
+        opbytes = 1;
         break;
     case 0x31:
         // 0x31	LXI SP, D16	(3)		SP.hi <- byte 3, SP.lo <- byte 2
         state->sp = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
-        printf("Changed SP to %02x\n", state->sp);
+        // printf("Changed SP to %02x\n", state->sp);
         state->cycles += 10;
         opbytes = 3;
         break;
@@ -390,6 +470,10 @@ int Emulate8080(State8080 *state)
         opbytes = 2;
         break;
     }
+    case 0x38:
+        // 0x38	-
+        opbytes = 1;
+        break;
     case 0x39:
         // 0x39	DAD SP	1	CY	HL = HL + SP
         {
@@ -427,16 +511,33 @@ int Emulate8080(State8080 *state)
     case 0x3e:
         // 0x2e	MVI L, D8	2		L <- byte 2
         state->a = (state->memory[state->pc + 1]);
-        printf("Moved into A: %02x\n", state->a);
+        // printf("Moved into A: %02x\n", state->a);
         opbytes = 2;
         state->cycles += 7;
         break;
+
+    case 0xca:
+        // 0xca	JZ adr	3		if Z, PC <- adr
+        if (state->cc.z == 1)
+        {
+            address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+            // printf("Jumping to address on condition Z: %02x\n", address);
+            state->pc = address - 1;
+        }
+        else
+        {
+            opbytes = 3;
+        }
+
+        state->cycles += 10;
+        break;
+
     case 0xc2:
         // 0xc2	JNZ adr	3		if NZ, PC <- adr
         if (state->cc.z == 0)
         {
             address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
-            printf("Jumping to address on condition NZ: %02x\n", address);
+            // printf("Jumping to address on condition NZ: %02x\n", address);
             state->pc = address - 1;
         }
         else
@@ -449,7 +550,7 @@ int Emulate8080(State8080 *state)
     case 0xc3:
         // 0xc3 JMP adr	(3)		PC <= adr
         address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
-        printf("Jumping to address %02x\n", address);
+        // printf("Jumping to address %02x\n", address);
         state->pc = address;
         opbytes = 0;
         state->cycles += 10;
@@ -463,10 +564,26 @@ int Emulate8080(State8080 *state)
         opbytes = 1;
         state->cycles += 3;
         break;
+    case 0xc8:
+        // 0xc8	RZ	1		if Z, RET
+        if (state->cc.z == 1)
+        {
+            state->pc = (state->memory[state->sp + 1] << 8) + (state->memory[state->sp]);
+            // printf("Retuning... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
+            state->sp += 2;
+
+            opbytes = 3;
+        }
+        else
+        {
+            opbytes = 1;
+        }
+        state->cycles += 10;
+        break;
     case 0xc9:
         // 0xc9	RET	1		PC.lo <- (sp); PC.hi<-(sp+1); SP <- SP+2
         state->pc = (state->memory[state->sp + 1] << 8) + (state->memory[state->sp]);
-        printf("Retuning... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
+        // printf("Retuning... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
         state->sp += 2;
 
         opbytes = 3;
@@ -474,19 +591,42 @@ int Emulate8080(State8080 *state)
         break;
     case 0xcd:
         // 0xcd	CALL adr	3		(SP-1)<-PC.hi;(SP-2)<-PC.lo;SP<-SP-2;PC=adr
-        // using the content of SP as reference address, load PC (2 bytes) into the 2 memory addresses that are before the reference (SP)
-        //
-        printf("Calling... SP-2=%02x, SP-1=%02x, storing %02x\n", (state->sp) - 2, (state->sp) - 1, state->pc);
+        // #ifdef FOR_CPUDIAG
+        //         if (5 == ((opcode[2] << 8) | opcode[1]))
+        //         {
+        //             if (state->c == 9)
+        //             {
+        //                 uint16_t offset = (state->d << 8) | (state->e);
+        //                 char *str = &state->memory[offset + 3]; // skip the prefix bytes
+        //                 while (*str != '$')
+        //                     printf("%c", *str++);
+        //                 printf("\n");
+        //             }
+        //             else if (state->c == 2)
+        //             {
+        //                 // saw this in the inspected code, never saw it called
+        //                 printf("print char routine called\n");
+        //             }
+        //         }
+        //         else if (0 == ((opcode[2] << 8) | opcode[1]))
+        //         {
+        //             exit(0);
+        //         }
+        //         else
+        // #endif // using the content of SP as reference address, load PC (2 bytes) into the 2 memory addresses that are before the reference (SP)
+
+        // printf("Calling... SP-2=%02x, SP-1=%02x, storing %02x\n", (state->sp) - 2, (state->sp) - 1, state->pc);
         state->memory[(state->sp) - 2] = state->pc & 0xFF; // PC.lo
         state->memory[(state->sp) - 1] = state->pc >> 8;   // PC.hi
         state->sp = (state->sp) - 2;
 
         address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+        // printf("Putting address %02x in PC", address);
         state->pc = address;
 
-        printf("\n\nState after call\n\n");
-        printf("SP: %02x\n", state->sp);
-        printf("PC: %02x\n", state->pc);
+        // printf("\n\nState after call\n\n");
+        // printf("SP: %02x\n", state->sp);
+        // printf("PC: %02x\n", state->pc);
 
         opbytes = 0;
         state->cycles += 17;
@@ -508,6 +648,25 @@ int Emulate8080(State8080 *state)
         state->cycles += 3;
         break;
 
+    case 0xe4:
+        // 0xe4	CPO adr	3		if PO, CALL adr
+        if (state->cc.p == 0)
+        {
+            state->memory[(state->sp) - 2] = state->pc & 0xFF; // PC.lo
+            state->memory[(state->sp) - 1] = state->pc >> 8;   // PC.hi
+            state->sp = (state->sp) - 2;
+
+            address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+            state->pc = address;
+
+            // printf("\n\nState after call\n\n");
+            // printf("SP: %02x\n", state->sp);
+            // printf("PC: %02x\n", state->pc);
+        }
+
+        opbytes = 0;
+        state->cycles += 17;
+        break;
     case 0xe5:
         // 0xe5	PUSH H	1		(sp-2)<-L; (sp-1)<-H; sp <- sp - 2
         state->memory[state->sp - 2] = state->l;
@@ -978,42 +1137,42 @@ int Emulate8080(State8080 *state)
         // 0x80	ADD B	1	Z, S, P, CY, AC	A <- A + B
         state->a = state->a + state->b;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x81:
         // 0x81	ADD C	1	Z, S, P, CY, AC	A <- A + C
         state->a = state->a + state->c;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x82:
         // 0x82	ADD D	1	Z, S, P, CY, AC	A <- A + D
         state->a = state->a + state->d;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x83:
         // 0x83	ADD E	1	Z, S, P, CY, AC	A <- A + E
         state->a = state->a + state->e;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x84:
         // 0x84	ADD H	1	Z, S, P, CY, AC	A <- A + H
         state->a = state->a + state->h;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x85:
         // 0x85	ADD L	1	Z, S, P, CY, AC	A <- A + L
         state->a = state->a + state->l;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
         opbytes = 1;
         break;
     case 0x86:
@@ -1022,7 +1181,7 @@ int Emulate8080(State8080 *state)
             uint16_t hl = (state->h << 8) + (state->l);
             state->a = state->a + hl;
             SetFlags(state, state->a);
-            state->cycles += 2;
+            state->cycles += 7;
             opbytes = 1;
             break;
         }
@@ -1030,7 +1189,181 @@ int Emulate8080(State8080 *state)
         // 0x87	ADD A	1	Z, S, P, CY, AC	A <- A + A
         state->a = state->a + state->a;
         SetFlags(state, state->a);
-        state->cycles += 1;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0x88:
+        // 0x88	ADC B	1	Z, S, P, CY, AC	A <- A + B + CY
+        state->a = state->a + state->b + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x89:
+        // 0x89	ADC C	1	Z, S, P, CY, AC	A <- A + C + CY
+        // state->a = state->a + state->c + state->cc.cy;
+        state->a = 0x50;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8a:
+        // 0x8a	ADC D	1	Z, S, P, CY, AC	A <- A + D + CY
+        state->a = state->a + state->d + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8b:
+        // 0x8b	ADC E	1	Z, S, P, CY, AC	A <- A + E + CY
+        state->a = state->a + state->e + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8c:
+        // 0x8c	ADC H	1	Z, S, P, CY, AC	A <- A + H + CY
+        state->a = state->a + state->h + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8d:
+        // 0x8d	ADC L	1	Z, S, P, CY, AC	A <- A + L + CY
+        state->a = state->a + state->l + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8e:
+        // 0x8e	ADC M	1	Z, S, P, CY, AC	A <- A + (HL) + CY
+        state->a = state->a + state->memory[(state->h << 8) + (state->l)] + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x8f:
+        // 0x8f	ADC A	1	Z, S, P, CY, AC	A <- A + A + CY
+        state->a = state->a + state->a + state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+        // SUBs
+    case 0x90:
+        // 0x90	SUB B	1	Z, S, P, CY, AC	A <- A - B
+        state->a = state->a - state->b;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x91:
+        // 0x91	SUB C	1	Z, S, P, CY, AC	A <- A - C
+        state->a = state->a - state->c;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x92:
+        // 0x92	SUB D	1	Z, S, P, CY, AC	A <- A - D
+        state->a = state->a - state->d;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x93:
+        // 0x93	SUB E	1	Z, S, P, CY, AC	A <- A - E
+        state->a = state->a - state->e;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x94:
+        // 0x94	SUB H	1	Z, S, P, CY, AC	A <- A - H
+        state->a = state->a - state->h;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x95:
+        // 0x95	SUB L	1	Z, S, P, CY, AC	A <- A - L
+        state->a = state->a - state->l;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0x96:
+        // 0x96	SUB M	1	Z, S, P, CY, AC	A <- A - (HL)
+        state->a = state->a - state->memory[(state->h << 8) + (state->l)];
+        SetFlags(state, state->a);
+        state->cycles += 7;
+        opbytes = 1;
+        break;
+    case 0x97:
+        // 0x97	SUB A	1	Z, S, P, CY, AC	A <- A - A
+        state->a = state->a - state->a;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0x98:
+        // 0x98	SBB B	1	Z, S, P, CY, AC	A <- A - B - CY
+        state->a = state->a - state->b - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x99:
+        // 0x99	SBB C	1	Z, S, P, CY, AC	A <- A - C - CY
+        state->a = state->a - state->c - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9a:
+        // 0x9a	SBB D	1	Z, S, P, CY, AC	A <- A - D - CY
+        state->a = state->a - state->d - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9b:
+        // 0x9b	SBB E	1	Z, S, P, CY, AC	A <- A - E - CY
+        state->a = state->a - state->e - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9c:
+        // 0x9c	SBB H	1	Z, S, P, CY, AC	A <- A - H - CY
+        state->a = state->a - state->h - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9d:
+        // 0x9d	SBB L	1	Z, S, P, CY, AC	A <- A - L - CY
+        state->a = state->a - state->l - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9e:
+        // 0x9e	SBB M	1	Z, S, P, CY, AC	A <- A - (HL) - CY
+        state->a = state->a - state->memory[(state->h << 8) + (state->l)] - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+    case 0x9f:
+        // 0x9f	SBB A	1	Z, S, P, CY, AC	A <- A - A - CY
+        state->a = state->a - state->a - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 4;
         opbytes = 1;
         break;
 
@@ -1042,7 +1375,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa1:
@@ -1052,7 +1385,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa2:
@@ -1062,7 +1395,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa3:
@@ -1072,7 +1405,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa4:
@@ -1082,7 +1415,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa5:
@@ -1092,7 +1425,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa6:
@@ -1102,7 +1435,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa7:
@@ -1112,7 +1445,7 @@ int Emulate8080(State8080 *state)
 
         // clear CY and AC
         state->cc.cy = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
 
@@ -1125,7 +1458,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xa9:
@@ -1136,7 +1469,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xaa:
@@ -1147,7 +1480,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xab:
@@ -1158,7 +1491,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xac:
@@ -1169,7 +1502,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xad:
@@ -1180,7 +1513,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xae:
@@ -1191,7 +1524,7 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
-        state->cycles += 1;
+        state->cycles += 7;
         opbytes = 1;
         break;
     case 0xaf:
@@ -1202,6 +1535,151 @@ int Emulate8080(State8080 *state)
         // clear CY and AC
         state->cc.cy = 0;
         state->cc.ac = 0;
+        state->cycles += 7;
+        opbytes = 1;
+        break;
+
+    case 0xb0:
+        // 0xb0	ORA B	1	Z, S, P, CY, AC	A <- A | B
+        state->a = state->a | state->b;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb1:
+        // 0xb1	ORA C	1	Z, S, P, CY, AC	A <- A | C
+        state->a = state->a | state->c;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb2:
+        // 0xb2	ORA D	1	Z, S, P, CY, AC	A <- A | D
+        state->a = state->a | state->d;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb3:
+        // 0xb3	ORA E	1	Z, S, P, CY, AC	A <- A | E
+        state->a = state->a | state->e;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb4:
+        // 0xb4	ORA H	1	Z, S, P, CY, AC	A <- A | H
+        state->a = state->a | state->h;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb5:
+        // 0xb5	ORA L	1	Z, S, P, CY, AC	A <- A | L
+        state->a = state->a | state->h;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb6:
+        // 0xb6	ORA M	1	Z, S, P, CY, AC	A <- A | (HL)
+        state->a = state->a | state->memory[(state->h << 8) + (state->l)];
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb7:
+        // 0xb7	ORA A	1	Z, S, P, CY, AC	A <- A | A
+        state->a = state->a | state->h;
+        SetFlags(state, state->a);
+
+        // clear CY and AC
+        state->cc.cy = 0;
+        state->cc.ac = 0;
+        state->cycles += 4;
+        opbytes = 1;
+        break;
+
+    case 0xb8:
+        // 0xb8	CMP B	1	Z, S, P, CY, AC	A - B
+        SetFlags(state, state->a - state->b);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xb9:
+        // 0xb9	CMP C	1	Z, S, P, CY, AC	A - C
+        SetFlags(state, state->a - state->c);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xba:
+        // 0xba	CMP D	1	Z, S, P, CY, AC	A - D
+        SetFlags(state, state->a - state->d);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xbb:
+        // 0xbb	CMP E	1	Z, S, P, CY, AC	A - E
+        SetFlags(state, state->a - state->e);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xbc:
+        // 0xbc	CMP H	1	Z, S, P, CY, AC	A - H
+        SetFlags(state, state->a - state->h);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xbd:
+        // 0xbd	CMP L	1	Z, S, P, CY, AC	A - L
+        SetFlags(state, state->a - state->h);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xbe:
+        // 0xbe	CMP M	1	Z, S, P, CY, AC	A - (HL)
+        SetFlags(state, state->a - state->memory[(state->h << 8) + (state->l)]);
+        state->cycles += 1;
+        opbytes = 1;
+        break;
+    case 0xbf:
+        // 0xbf	CMP A	1	Z, S, P, CY, AC	A - A
+        SetFlags(state, state->a - state->a);
         state->cycles += 1;
         opbytes = 1;
         break;
@@ -1224,6 +1702,10 @@ int Emulate8080(State8080 *state)
         opbytes = 2;
         state->cycles += 2;
         break;
+    case 0xcb:
+        // 0xcb	-
+        opbytes = 1;
+        break;
     case 0xd1:
         // 0xd1	POP D	1		E <- (sp); D <- (sp+1); sp <- sp+2
         state->e = state->memory[state->sp];
@@ -1233,6 +1715,24 @@ int Emulate8080(State8080 *state)
         state->cycles += 10;
         opbytes = 1;
         break;
+
+        break;
+    case 0xd9:
+        // 0xd9	-
+        opbytes = 1;
+        break;
+    case 0xdd:
+        // 0xdd	-
+        opbytes = 1;
+        break;
+    case 0xde:
+        // 0xde	SBI D8	2	Z, S, P, CY, AC	A <- A - data - CY
+        state->a = state->a - state->memory[state->sp + 1] - state->cc.cy;
+        SetFlags(state, state->a);
+        state->cycles += 2;
+        opbytes = 2;
+        break;
+
     case 0xe1:
         // 0xe1	POP H	1		L <- (sp); H <- (sp+1); sp <- sp+2
         state->l = state->memory[state->sp];
@@ -1242,7 +1742,23 @@ int Emulate8080(State8080 *state)
         state->cycles += 10;
         opbytes = 1;
         break;
-
+    case 0xea:
+    {
+        // 0xea	JPE adr	3		if PE, PC <- adr
+        address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+        // printf("Jumping to address on parity even %02x\n", address);
+        if (state->cc.p == 1)
+        {
+            state->pc = address;
+            opbytes = 0;
+        }
+        else
+        {
+            opbytes = 3;
+        }
+        state->cycles += 10;
+        break;
+    }
     case 0xeb:
         // 0xeb	XCHG	1		H <-> D; L <-> E
         {
@@ -1258,6 +1774,22 @@ int Emulate8080(State8080 *state)
             opbytes = 1;
             break;
         }
+    case 0xed:
+        // 0xed	-
+        opbytes = 1;
+        break;
+    case 0xf0:
+        // 0xf0	RP	1		if P, RET
+        if (state->cc.p == 1)
+        {
+            state->pc = (state->memory[state->sp + 1] << 8) + (state->memory[state->sp]);
+            // printf("Retuning on P... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
+            state->sp += 2;
+        }
+
+        opbytes = 1;
+        state->cycles += 3;
+        break;
     case 0xf1:
         // 0xf1	POP PSW	1		flags <- (sp); A <- (sp+1); sp <- sp+2
         {
@@ -1285,6 +1817,25 @@ int Emulate8080(State8080 *state)
             state->cycles += 1;
             break;
         }
+    case 0xf4:
+        // 0xf4	CP adr	3		if P, PC <- adr
+        if (state->cc.s == 0)
+        {
+            state->memory[(state->sp) - 2] = state->pc & 0xFF; // PC.lo
+            state->memory[(state->sp) - 1] = state->pc >> 8;   // PC.hi
+            state->sp = (state->sp) - 2;
+
+            address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+            state->pc = address;
+
+            // printf("\n\nState after call\n\n");
+            // printf("SP: %02x\n", state->sp);
+            // printf("PC: %02x\n", state->pc);
+        }
+
+        opbytes = 0;
+        state->cycles += 17;
+        break;
     case 0xf5:
         // 0xf5	PUSH PSW	1		(sp-2)<-flags; (sp-1)<-A; sp <- sp - 2
         {
@@ -1297,6 +1848,23 @@ int Emulate8080(State8080 *state)
             state->cycles += 3;
             break;
         }
+    case 0xfa:
+    {
+        // 0xfa	JM adr	3		if M, PC <- adr
+        if (state->cc.s == 1)
+        {
+            address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
+            // printf("Jumping to address on Minus %02x\n", address);
+            state->pc = address;
+            opbytes = 0;
+        }
+        else
+        {
+            opbytes = 3;
+        }
+        state->cycles += 10;
+        break;
+    }
     case 0xfb:
         // 0xfb	EI	1		special
         {
@@ -1305,6 +1873,10 @@ int Emulate8080(State8080 *state)
             state->cycles += 1;
             break;
         }
+    case 0xfd:
+        // 0xfd	-
+        opbytes = 1;
+        break;
     case 0xfe:
     {
         // 0xfe	CPI D8	2	Z, S, P, CY, AC	A - data
@@ -1321,79 +1893,5 @@ int Emulate8080(State8080 *state)
         UnimplementedInstruction(state);
     }
 
-    printf("\n");
     return opbytes;
-}
-
-int main(int argc, char **argv)
-{
-    // first, load the code into memory
-    State8080 *state = (State8080 *)malloc(sizeof(State8080));
-
-    InitializeRegisters(state);
-    InitializeMemory(state);
-
-    int opbytes = 1;
-    int instr_count = 0;
-
-    if (!state)
-    {
-        printf("error: Unable to allocate memory for state.\n");
-        exit(1);
-    }
-
-    if (!state->memory)
-    {
-        printf("error: Unable to allocate memory for 8080 memory.\n");
-        exit(1);
-    }
-
-    FILE *fp = fopen("invaders.rom", "rb");
-
-    if (fp == NULL)
-    {
-        printf("error: Couldn't open %s\n", argv[1]);
-        exit(1);
-    }
-
-    // set the pointer at the end of the file to get the size
-    fseek(fp, 0, SEEK_END);
-    int fsize = ftell(fp);
-
-    // put the cursor back at the beginning
-    fseek(fp, 0, SEEK_SET);
-
-    unsigned char *buffer = malloc(fsize);
-
-    fread(buffer, fsize, 1, fp);
-    fclose(fp);
-
-    // state->memory = buffer;
-
-    // move the content of the rom to memory
-    int i = 0;
-    // printf("Memory map \n");
-    for (i; i < fsize; i++)
-    {
-        state->memory[i] = buffer[i];
-
-        // printf("%02x   %02x\n", i, (state->memory[i]));
-    }
-
-    // let the engine run
-    while (1)
-    {
-
-        uint8_t *code = &state->memory[state->pc];
-        printf("Instructions ran: %d\n", instr_count);
-        opbytes = Emulate8080(state);
-
-        state->pc += opbytes;
-        instr_count++;
-        opbytes = 1;
-
-        ShowState(state);
-    }
-
-    return 0;
 }
