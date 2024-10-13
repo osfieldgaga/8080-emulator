@@ -7,6 +7,7 @@
 #include "SDL2/include/SDL2/SDL_ttf.h"
 #include "constants.h"
 #include <time.h>
+#include <stdbool.h>
 
 typedef struct ShiftRegister
 {
@@ -15,6 +16,8 @@ typedef struct ShiftRegister
     uint8_t shift_offset;
 
 } ShiftRegister;
+
+bool continue_exec = false;
 
 uint8_t r_port[4];
 uint8_t w_port[7];
@@ -97,6 +100,8 @@ uint8_t MachineKeyUp(uint8_t port, uint8_t value)
 
 void Interrupt(State8080 *state, uint8_t int_num)
 {
+    // Basically the implementation of a RST function, which is a special CALL
+    // only difference is the value set into the PC
     state->memory[(state->sp) - 2] = state->pc & 0xFF; // PC.lo
     state->memory[(state->sp) - 1] = state->pc >> 8;   // PC.hi
     state->sp = (state->sp) - 2;
@@ -167,9 +172,16 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    FILE *fp = fopen("invaders.rom", "rb");
+    FILE *fp = NULL;
 
-    // FILE *fp = fopen("cpudiag.bin", "rb");
+    if (!FOR_CPUDIAG)
+    {
+        fp = fopen("invaders.rom", "rb");
+    }
+    else
+    {
+        fp = fopen("cpudiag.bin", "rb");
+    }
 
     if (fp == NULL)
     {
@@ -180,6 +192,7 @@ int main(int argc, char **argv)
     // set the pointer at the end of the file to get the size
     fseek(fp, 0, SEEK_END);
     int fsize = ftell(fp);
+    printf("%d", fsize);
 
     // put the cursor back at the beginning
     fseek(fp, 0, SEEK_SET);
@@ -203,19 +216,22 @@ int main(int argc, char **argv)
 
     state->pc = 0;
 
-    // Fix the first instruction to be JMP 0x100
-    // state->memory[0] = 0xc3;
-    // state->memory[1] = 0x00;
-    // state->memory[2] = 0x01;
-    // // Fix the stack pointer from 0x6ad to 0x7ad
-    // //  this 0x06 byte 112 in the code, which is
-    // //  byte 112 + 0x100 = 368 in memory
-    // state->memory[368] = 0x7;
+    if (FOR_CPUDIAG)
+    {
+        // Fix the first instruction to be JMP 0x100
+        state->memory[0] = 0xc3;
+        state->memory[1] = 0x00;
+        state->memory[2] = 0x01;
+        // Fix the stack pointer from 0x6ad to 0x7ad
+        //  this 0x06 byte 112 in the code, which is
+        //  byte 112 + 0x100 = 368 in memory
+        state->memory[368] = 0x7;
 
-    // // Skip DAA test
-    // state->memory[0x59c] = 0xc3; // JMP
-    // state->memory[0x59d] = 0xc2;
-    // state->memory[0x59e] = 0x05;
+        // Skip DAA test
+        state->memory[0x59c] = 0xc3; // JMP
+        state->memory[0x59d] = 0xc2;
+        state->memory[0x59e] = 0x05;
+    }
 
     // let the engine run
     start_time = clock(); // Start time
@@ -274,8 +290,6 @@ int main(int argc, char **argv)
 
         uint8_t *code = &state->memory[state->pc];
 
-        printf("Instructions ran: %d\n", instr_count);
-
         if (*code == 0xdb)
         {
             // implement IN
@@ -296,13 +310,25 @@ int main(int argc, char **argv)
         {
             opbytes = Emulate8080(state);
 
-            state->pc += opbytes;
+            if (!MANUAL_EXEC)
+            {
+
+                state->pc += opbytes;
+            } else {
+                while(!continue_exec);
+                continue_exec = false;
+            }
+
+
             instr_count++;
             opbytes = 1;
         }
         if (LOGS_CPU)
         {
             system("@cls||clear");
+            printf("Instructions ran: %d\n", instr_count);
+            printf("Prev instructions: %02x\n", state->memory[state->pc - 1]);
+            printf("Current instructions: %02x\n", state->memory[state->pc]);
             ShowState(state);
         }
 
@@ -319,6 +345,10 @@ int main(int argc, char **argv)
                 {
                 case SDL_SCANCODE_SPACE:
                     MachineKeyDown(1, 0x10);
+                    if(MANUAL_EXEC) {
+                        state->pc += opbytes;
+                        continue_exec = true;
+                    }
                     break;
                 case SDL_SCANCODE_LEFT:
                     MachineKeyDown(1, 0x20);
@@ -358,17 +388,43 @@ int main(int argc, char **argv)
         // Calculate the elapsed time in seconds
         elapsed_time = ((double)(current_time - start_time)) / CLOCKS_PER_SEC;
 
+        int i, j, k;
+        for (i = 0; i < 256; i++)
+        {
+            for (j = 244; j >= 0; j--)
+            {
+                uint8_t offset = (i * 244) + j;
+                uint8_t render_pixels = state->memory[0x2400 + offset];
+
+                for (k = 0; k < 8; k++)
+                {
+                    uint8_t pixel_state = (render_pixels >> k) & 0x01;
+
+                    if (pixel_state)
+                    {
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    }
+                    else
+                    {
+                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                    }
+
+                    SDL_RenderDrawPoint(renderer, i, j);
+                }
+            }
+        }
+        frame_count++;
+
         if (elapsed_time >= (8.33 / 1000))
         {
             // Generate the VBlank interrupt or perform the action here
-            printf("Mid screen interrupt generated\n");
+            // printf("Mid screen interrupt generated\n");
             // Interrupt(state, 1);
         }
 
         if (elapsed_time >= (16.67 / 1000))
         {
             // Generate the VBlank interrupt or perform the action here
-            printf("VBlank interrupt generated\n");
 
             // Reset the start time to the current time for the next loop
             start_time = current_time;
@@ -378,41 +434,17 @@ int main(int argc, char **argv)
                 max_elapsed = elapsed_time;
             }
 
-            int i, j, k;
-            for (i = 0; i < 256; i++)
-            {
-                for (j = 244; j >= 0; j--)
-                {
-                    uint8_t offset = (i * 244) + j;
-                    uint8_t render_pixels = state->memory[0x2400 + offset];
-
-                    for (k = 0; k < 8; k++)
-                    {
-                        uint8_t pixel_state = (render_pixels >> k) & 0x01;
-
-                        if (pixel_state)
-                        {
-                            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                        }
-                        else
-                        {
-                            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                        }
-
-                        SDL_RenderDrawPoint(renderer, i, j);
-                    }
-                }
-            }
-            frame_count++;
             if (state->int_enabled)
             {
                 Interrupt(state, 2);
+                opbytes = 1;
             }
         }
 
         SDL_RenderCopy(renderer, text_texture_l, NULL, &(SDL_Rect){0, 244, text_l->w, text_l->h});
         SDL_RenderCopy(renderer, text_texture_r, NULL, &(SDL_Rect){text_l->w + 10, 244, text_r->w, text_r->h});
         SDL_RenderCopy(renderer, text_texture_shoot, NULL, &(SDL_Rect){0, 244 + text_l->h + 5, text_shoot->w, text_shoot->h});
+
         SDL_RenderPresent(renderer);
 
         if (LOGS_MACHINE)
