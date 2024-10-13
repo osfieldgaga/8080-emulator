@@ -5,6 +5,6 @@
 #define LOGS_MACHINE 0
 
 
-#define MANUAL_EXEC 1
+#define MANUAL_EXEC 0
 
-#define FOR_CPUDIAG 1
+#define FOR_CPUDIAG 0
