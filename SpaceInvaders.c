@@ -109,6 +109,8 @@ void Interrupt(State8080 *state, uint8_t int_num)
     state->pc = 8 * int_num;
 }
 
+
+
 int main(int argc, char **argv)
 {
 
@@ -180,7 +182,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        fp = fopen("cpudiag.bin", "rb");
+        fp = fopen("cpudiag_offset.bin", "rb");
     }
 
     if (fp == NULL)
@@ -314,22 +316,24 @@ int main(int argc, char **argv)
             {
 
                 state->pc += opbytes;
-            } else {
-                while(!continue_exec);
+            }
+            else
+            {
+                while (!continue_exec)
+                    ;
                 continue_exec = false;
             }
 
-
             instr_count++;
+            if (LOGS_CPU)
+            {
+                // system("@cls||clear");
+                printf("Instructions ran: %d\n", instr_count);
+                printf("Prev instructions: %02x\n", state->memory[state->pc - opbytes]);
+                printf("Current instructions: %02x\n", state->memory[state->pc]);
+                ShowState(state);
+            }
             opbytes = 1;
-        }
-        if (LOGS_CPU)
-        {
-            system("@cls||clear");
-            printf("Instructions ran: %d\n", instr_count);
-            printf("Prev instructions: %02x\n", state->memory[state->pc - 1]);
-            printf("Current instructions: %02x\n", state->memory[state->pc]);
-            ShowState(state);
         }
 
         if (SDL_PollEvent(&event))
@@ -345,7 +349,8 @@ int main(int argc, char **argv)
                 {
                 case SDL_SCANCODE_SPACE:
                     MachineKeyDown(1, 0x10);
-                    if(MANUAL_EXEC) {
+                    if (MANUAL_EXEC)
+                    {
                         state->pc += opbytes;
                         continue_exec = true;
                     }
@@ -394,7 +399,16 @@ int main(int argc, char **argv)
             for (j = 244; j >= 0; j--)
             {
                 uint8_t offset = (i * 244) + j;
-                uint8_t render_pixels = state->memory[0x2400 + offset];
+
+                uint8_t render_pixels;
+                if (FOR_CPUDIAG)
+                {
+                    render_pixels = state->memory[0x2000 + offset];
+                }
+                else
+                {
+                    render_pixels = state->memory[0x2400 + offset];
+                }
 
                 for (k = 0; k < 8; k++)
                 {

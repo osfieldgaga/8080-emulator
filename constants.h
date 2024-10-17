@@ -7,4 +7,4 @@
 
 #define MANUAL_EXEC 0
 
-#define FOR_CPUDIAG 0
+#define FOR_CPUDIAG 1
