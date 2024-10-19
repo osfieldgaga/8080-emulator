@@ -36,15 +36,16 @@ typedef struct State8080
 
 void InitializeRegisters(State8080 *state)
 {
-    state->a = 0;
-    state->b = 0;
-    state->c = 0;
-    state->d = 0;
-    state->e = 0;
-    state->h = 0;
-    state->l = 0;
-    state->sp = 0;
-    state->pc = 0;
+    state->a = 0x00;
+    state->b = 0x00;
+    state->c = 0x00;
+    state->d = 0x00;
+    state->e = 0x00;
+    state->h = 0x00;
+    state->l = 0x00;
+    state->sp = 0x00;
+    state->pc = 0x00;
+    state->int_enabled = 0x00;
 }
 
 void InitializeMemory(State8080 *state)
@@ -77,6 +78,8 @@ void ShowState(State8080 *state)
     printf("E: %02x\n", state->e);
     printf("H: %02x\n", state->h);
     printf("L: %02x\n", state->l);
+    printf("Interrupt: %02x\n", state->int_enabled);
+
     // printf("Cycles: %d\n\n", state->cycles);
     // printf("CALL/RET content: %02x%02x\n", state->memory[state->sp + 1], state->memory[state->sp]);
 
@@ -96,14 +99,19 @@ void SetFlags(State8080 *state, uint16_t ops_result)
     state->cc.s = (ops_result >> 7 & 0x01 == 1) ? 1 : 0;
 
     int i, count = 0;
+    // printf("Parity check: 0b");
     for (i = 0; i < 8; i++)
     {
 
-        if (ops_result >> i & 0x01)
+        if ((ops_result >> i & 0x01) == 1)
         {
             count++;
+            // printf("1");
+        } else {
+            // printf("0");
         }
     }
+        // printf("\n");
     state->cc.p = (count % 2 == 0) ? 1 : 0;
 
     state->cc.ac = ((((ops_result & 0xF) - 1) & 0x10) == 0x10) ? 1 : 0;
@@ -522,6 +530,40 @@ int Emulate8080(State8080 *state)
         state->cycles += 7;
         break;
 
+    case 0x27:
+        // DAA
+        {
+            uint8_t correction = 0;
+            uint8_t old_acc = state->a; // Save the old accumulator value
+
+            // Check lower nibble (bits 0-3)
+            if ((state->a & 0x0F) > 0x9 || state->cc.ac)
+            {
+                // correction += 0x06;
+                state->a += 0x06;
+                state->cc.ac = 1; // Set auxiliary carry flag if adjustment is made
+            }
+
+            // Check upper nibble (bits 4-7)
+            if (((state->a >> 4) & 0x0F) > 0x9 || state->cc.cy)
+            {
+                correction += 0x60;
+                state->cc.cy = 1; // Set carry flag if adjustment is made
+            }
+
+            // Apply the correction to the accumulator
+            SetFlags(state, state->a + correction);
+            state->a = state->a + correction;
+
+            // Set flags based on the new value in the accumulator
+
+            // Maintain the carry flag if the result exceeds 8 bits
+            if (state->a < old_acc)
+            {
+                state->cc.cy = 1; // Carry flag is set
+            }
+        }
+
     case 0x28:
         // 0x28 -
         opbytes = 1;
@@ -604,9 +646,9 @@ int Emulate8080(State8080 *state)
                 int inv_bit = !((state->a >> (i - 1)) & 0x01);
                 comp_a = (inv_bit << (i - 1)) | comp_a;
             }
-            printf("A before complement: %02x", state->a);
+            // printf("A before complement: %02x", state->a);
             state->a = comp_a;
-            printf("A after complement: %02x", state->a);
+            // printf("A after complement: %02x", state->a);
             opbytes = 1;
             state->cycles += 1;
             break;
@@ -1198,8 +1240,6 @@ int Emulate8080(State8080 *state)
     case 0x80:
         // 0x80	ADD B	1	Z, S, P, CY, AC	A <- A + B
         {
-            printf("A (%02x) + B (%02x) = %02x\n", state->a, state->b, (state->a + state->b));
-            printf("Carry = %02x", state->cc.cy);
             uint16_t res = state->a + state->b;
             state->a = res;
             SetFlags(state, res);
@@ -1291,7 +1331,6 @@ int Emulate8080(State8080 *state)
             uint16_t res = state->a + state->d + state->cc.cy;
             state->a = res;
             SetFlags(state, res);
-            printf("A (%02x) + D (%02x) + CY (%02x) = %02x", a_temp, state->d, state->cc.cy, state->a);
             state->cycles += 4;
             opbytes = 1;
             break;
@@ -1793,7 +1832,6 @@ int Emulate8080(State8080 *state)
     case 0xbe:
         // 0xbe	CMP M	1	Z, S, P, CY, AC	A - (HL)
         SetFlags(state, state->a - state->memory[(state->h << 8) | (state->l)]);
-        printf("(HL) = %02x, A = %02x\n", state->memory[(state->h << 8) | (state->l)], state->a);
         state->cycles += 1;
         opbytes = 1;
         break;
@@ -1808,7 +1846,7 @@ int Emulate8080(State8080 *state)
         if (state->cc.z == 0)
         {
             state->pc = ((state->memory[state->sp + 1] << 8) + (state->memory[state->sp])) + 3; // continue at the address right after the conditional call
-            printf("Retuning on P... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
+            // printf("Retuning on P... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
             state->sp += 2;
             opbytes = 0;
         }
@@ -1834,6 +1872,7 @@ int Emulate8080(State8080 *state)
             address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
             // printf("Jumping to address on condition NZ: %02x\n", address);
             state->pc = address - 1;
+
         }
         else
         {
@@ -1861,10 +1900,10 @@ int Emulate8080(State8080 *state)
             address = (state->memory[state->pc + 2] << 8) + state->memory[state->pc + 1];
             state->pc = address;
 
-            printf("\n\nWhat was done\n\n");
-            printf("New SP: %02x\n", state->sp);
-            printf("New PC: %02x\n", state->pc);
-            printf("Memory: %04x\n", (state->memory[(state->sp) + 1] << 8) | state->memory[(state->sp)]);
+            // printf("\n\nWhat was done\n\n");
+            // printf("New SP: %02x\n", state->sp);
+            // printf("New PC: %02x\n", state->pc);
+            // printf("Memory: %04x\n", (state->memory[(state->sp) + 1] << 8) | state->memory[(state->sp)]);
             opbytes = 0;
             stack[stack_size] = ((state->memory[(state->sp) + 1]) << 8) | (state->memory[(state->sp)]);
             stack_size++;
@@ -1879,7 +1918,7 @@ int Emulate8080(State8080 *state)
 
     case 0xc5:
         // 0xc5	PUSH B	1		(sp-2)<-C; (sp-1)<-B; sp <- sp - 2
-        printf("Executuing 0xc5 PUSH BC");
+        // printf("Executuing 0xc5 PUSH BC");
         state->memory[state->sp - 2] = state->c;
         state->memory[state->sp - 1] = state->b;
         state->sp -= 2;
@@ -1893,8 +1932,8 @@ int Emulate8080(State8080 *state)
             uint16_t res = state->a;
             res = res + state->memory[state->pc + 1];
 
-            printf("adi res: %04x\n", res);
-            printf("CY: %d\n", (res > 0xFF) ? 1 : 0);
+            // printf("adi res: %04x\n", res);
+            // printf("CY: %d\n", (res > 0xFF) ? 1 : 0);
 
             SetFlags(state, res);
 
@@ -1910,7 +1949,7 @@ int Emulate8080(State8080 *state)
         {
             state->pc = ((state->memory[state->sp + 1] << 8) + (state->memory[state->sp])) + 3; // continue at the address right after the conditional call
 
-            printf("Retuning on zero... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
+            // printf("Retuning on zero... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
             state->sp += 2;
 
             // opbytes = 3;
@@ -1924,7 +1963,7 @@ int Emulate8080(State8080 *state)
         break;
     case 0xc9:
         // 0xc9	RET	1		PC.lo <- (sp); PC.hi<-(sp+1); SP <- SP+2
-        state->pc = ((state->memory[state->sp + 1] << 8) + (state->memory[state->sp])) + 3; // continue at the address right after the conditional call
+        state->pc = ((state->memory[state->sp + 1] << 8) + (state->memory[state->sp])) + 2; // continue at the address right after the conditional call
         // printf("Retuning... SP=%02x, SP+1=%02x, restoring %02x%02x to PC\n", (state->sp), (state->sp) + 1, state->memory[state->sp + 1], state->memory[state->sp]);
         state->sp += 2;
 
@@ -2033,8 +2072,8 @@ int Emulate8080(State8080 *state)
             uint16_t res = state->a + state->memory[state->pc + 1] + state->cc.cy;
             SetFlags(state, res);
             state->a = res & 0xff;
-            printf("res after ACI: %04x\n", res);
-            printf("res && 0xff after ACI: %04x\n", res & 0xff);
+            // printf("res after ACI: %04x\n", res);
+            // printf("res && 0xff after ACI: %04x\n", res & 0xff);
             state->cycles += 2;
             opbytes = 2;
             break;
@@ -2361,7 +2400,7 @@ int Emulate8080(State8080 *state)
         // 0xec	CPE adr	3		if PE, CALL adr
         if (state->cc.p == 1)
         {
-            printf("Calling on PE... SP-2=%02x, SP-1=%02x, storing %02x\n", (state->sp) - 2, (state->sp) - 1, state->pc);
+            // printf("Calling on PE... SP-2=%02x, SP-1=%02x, storing %02x\n", (state->sp) - 2, (state->sp) - 1, state->pc);
             state->memory[(state->sp) - 2] = state->pc & 0xFF; // PC.lo
             state->memory[(state->sp) - 1] = state->pc >> 8;   // PC.hi
             state->sp = (state->sp) - 2;
@@ -2485,7 +2524,7 @@ int Emulate8080(State8080 *state)
     case 0xf5:
         // 0xf5	PUSH PSW	1		(sp-2)<-flags; (sp-1)<-A; sp <- sp - 2
         {
-            printf("Executing 0xf5 PUSH PSW");
+            // printf("Executing 0xf5 PUSH PSW");
             uint8_t flags = (state->cc.s << 7) + (state->cc.z << 6) + (0 << 5) + (state->cc.ac << 4) + (0 << 3) + (state->cc.p << 2) + (1 << 1) + (state->cc.cy);
             state->memory[state->sp - 2] = flags;
             state->memory[state->sp - 1] = state->a;
@@ -2526,7 +2565,7 @@ int Emulate8080(State8080 *state)
             state->sp = hl;
 
             opbytes = 1;
-            state->cycles += 1; 
+            state->cycles += 1;
             break;
         }
     case 0xfa:
@@ -2552,6 +2591,7 @@ int Emulate8080(State8080 *state)
             state->int_enabled = 0x01;
             opbytes = 1;
             state->cycles += 1;
+
             break;
         }
     case 0xfc:
@@ -2587,6 +2627,7 @@ int Emulate8080(State8080 *state)
     {
         // 0xfe	CPI D8	2	Z, S, P, CY, AC	A - data
         uint16_t comp = state->a - state->memory[state->pc + 1];
+        // printf("CPI: %02x - %02x = %02x\n", state->a, state->memory[state->pc + 1], comp);
 
         SetFlags(state, comp);
 

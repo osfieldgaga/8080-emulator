@@ -25,10 +25,6 @@ uint8_t w_port[7];
 int last_interrupt = 0;
 int frame_count = 0;
 
-clock_t start_time; // Start time
-clock_t current_time;
-double elapsed_time, max_elapsed;
-
 uint8_t MachineIN(uint8_t port, uint8_t data)
 {
     uint8_t acc;
@@ -109,7 +105,8 @@ void Interrupt(State8080 *state, uint8_t int_num)
     state->pc = 8 * int_num;
 }
 
-
+int current_time;
+int elapsed_time, max_elapsed;
 
 int main(int argc, char **argv)
 {
@@ -127,13 +124,21 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    SDL_Window *window = SDL_CreateWindow("Space Invaders", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256, 300, 0);
+    SDL_Window *window = SDL_CreateWindow("Space Invaders", (1920/2) - 256, SDL_WINDOWPOS_CENTERED, 256, 300, 0);
     if (!window)
     {
         printf("Error creating window: %s\n", SDL_GetError());
         SDL_Quit();
         return 0;
     }
+
+    // SDL_Window *window2 = SDL_CreateWindow("Machine State", (1920/2) + 256, SDL_WINDOWPOS_CENTERED, 512, 720, 0);
+    // if (!window2)
+    // {
+    //     printf("Error creating window: %s\n", SDL_GetError());
+    //     SDL_Quit();
+    //     return 0;
+    // }
 
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
     if (!renderer)
@@ -208,7 +213,7 @@ int main(int argc, char **argv)
 
     // move the content of the rom to memory
     int i = 0;
-    printf("Memory map: %02x \n", fsize);
+    // printf("Memory map: %02x \n", fsize);
     for (i; i <= fsize; i++)
     {
         state->memory[i] = (uint8_t)buffer[i];
@@ -230,13 +235,12 @@ int main(int argc, char **argv)
         state->memory[368] = 0x7;
 
         // Skip DAA test
-        state->memory[0x59c] = 0xc3; // JMP
-        state->memory[0x59d] = 0xc2;
-        state->memory[0x59e] = 0x05;
+        // state->memory[0x59c] = 0xc3; // JMP
+        // state->memory[0x59d] = 0xc2;
+        // state->memory[0x59e] = 0x05;
     }
 
     // let the engine run
-    start_time = clock(); // Start time
 
     // -------------------------------------------------------
 
@@ -286,44 +290,49 @@ int main(int argc, char **argv)
 
     // -------------------------------------------------------
 
+    int last_frame_time = SDL_GetTicks();
+
     while (1)
     {
         // system("@cls||clear");
 
+        current_time = SDL_GetTicks();
+        elapsed_time = (current_time - last_frame_time);
+
+        // printf("Current time (ms): %d\n", current_time);
+        // printf("Elapsed time (ms): %d\n", elapsed_time);
+        // printf("Last frame time (ms): %d\n", last_frame_time);
+        // printf("Max elapsed time (ms): %d\n", max_elapsed);
+
         uint8_t *code = &state->memory[state->pc];
+
+        int emul_time_start = SDL_GetTicks();
 
         if (*code == 0xdb)
         {
             // implement IN
+            // printf("Running IN %02x\n", code[1]);
             uint8_t port = code[1]; // the port is in the following byte
 
             state->a = MachineIN(port, state->a); //
-            state->pc++;
+            state->pc+=2;
+            state->cycles += 3;
         }
         else if (*code == 0xd3)
         {
             // implement out
+            // printf("Running OUT %02x\n", code[1]);
             uint8_t port = code[1]; // the data is in the following byte
 
             MachineOUT(port, state->a); // the value to be sent is stored in the accumulator before calling OUT
-            state->pc++;
+            state->pc+=2;
+            state->cycles += 3;
+
         }
         else
         {
             opbytes = Emulate8080(state);
-
-            if (!MANUAL_EXEC)
-            {
-
-                state->pc += opbytes;
-            }
-            else
-            {
-                while (!continue_exec)
-                    ;
-                continue_exec = false;
-            }
-
+            state->pc += opbytes;
             instr_count++;
             if (LOGS_CPU)
             {
@@ -333,8 +342,17 @@ int main(int argc, char **argv)
                 printf("Current instructions: %02x\n", state->memory[state->pc]);
                 ShowState(state);
             }
+            // system("@cls||clear");
+            // printf("Cycles: %d\n", state->cycles);
+            printf("%d\n", instr_count);
             opbytes = 1;
+
+            // if (instr_count == 40000) exit(1);
+            // if (state->pc == 0xada) exit(1);
+
         }
+
+        // printf("CPU time: %d\n", SDL_GetTicks() - emul_time_start);
 
         if (SDL_PollEvent(&event))
         {
@@ -391,19 +409,19 @@ int main(int argc, char **argv)
         current_time = clock();
 
         // Calculate the elapsed time in seconds
-        elapsed_time = ((double)(current_time - start_time)) / CLOCKS_PER_SEC;
+        // elapsed_time = ((double)(current_time - start_time)) / CLOCKS_PER_SEC;
 
         int i, j, k;
         for (i = 0; i < 256; i++)
         {
-            for (j = 244; j >= 0; j--)
+            for (j = 0; j < 28; j++)
             {
-                uint8_t offset = (i * 244) + j;
-
+                int offset = (i * 28) + j;
+                // printf("(%d, %d): %02x\n", i, j, state->memory[0x2400 + offset]);
                 uint8_t render_pixels;
                 if (FOR_CPUDIAG)
                 {
-                    render_pixels = state->memory[0x2000 + offset];
+                    render_pixels = state->memory[offset];
                 }
                 else
                 {
@@ -427,21 +445,27 @@ int main(int argc, char **argv)
                 }
             }
         }
+
         frame_count++;
 
-        if (elapsed_time >= (8.33 / 1000))
+        // printf("Elapsed time (ms): %d\n", elapsed_time);
+        if (elapsed_time >= 8.33 && elapsed_time < 16.67)
         {
             // Generate the VBlank interrupt or perform the action here
-            // printf("Mid screen interrupt generated\n");
-            // Interrupt(state, 1);
+            if (state->int_enabled)
+            {
+                Interrupt(state, 1);
+                opbytes = 1;
+                printf("Mid screen interrupt generated\n");
+            }
         }
 
-        if (elapsed_time >= (16.67 / 1000))
+        if (elapsed_time >= 16.67)
         {
             // Generate the VBlank interrupt or perform the action here
 
             // Reset the start time to the current time for the next loop
-            start_time = current_time;
+            last_frame_time = current_time;
 
             if (elapsed_time > max_elapsed)
             {
@@ -452,6 +476,7 @@ int main(int argc, char **argv)
             {
                 Interrupt(state, 2);
                 opbytes = 1;
+                printf("VBL interrupt generated\n");
             }
         }
 
@@ -460,6 +485,8 @@ int main(int argc, char **argv)
         SDL_RenderCopy(renderer, text_texture_shoot, NULL, &(SDL_Rect){0, 244 + text_l->h + 5, text_shoot->w, text_shoot->h});
 
         SDL_RenderPresent(renderer);
+
+        // printf("Render time: %d\n", SDL_GetTicks() - emul_time_start);
 
         if (LOGS_MACHINE)
         {
