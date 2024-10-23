@@ -2,7 +2,22 @@
 
 *Reference guide can be found [here](http://www.emulator101.com/welcome.html)
 
-*Also check out the intel 8080 manual in the reoi*
+*Also check out the intel 8080 manual in the repo*
+
+### Progress/Todo
+✅ Create 8080 Dissasembler
+✅ Implement 8080 instructions
+✅ Test CPU using CPUDIAG
+✅ Implement Space Invaders hardware
+	- Interrupts
+	- Shift register
+	- Input port (just for P1 for now)
+🔃 Implement video rendering
+	- Using SDL2 but rendering isn't great
+🔃 Implement sound
+🔃 Documentation
+
+So far, this is a functional 8080 emulator. It's now left with fully emulating the Space Invaders hardware.
 
 ### Disassembler
 To take the raw code and turn it into its assembly equivalent

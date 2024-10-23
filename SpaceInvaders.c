@@ -103,6 +103,8 @@ void Interrupt(State8080 *state, uint8_t int_num)
     state->sp = (state->sp) - 2;
 
     state->pc = 8 * int_num;
+
+    state->int_enabled = 0;
 }
 
 int current_time;
@@ -124,7 +126,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    SDL_Window *window = SDL_CreateWindow("Space Invaders", (1920/2) - 256, SDL_WINDOWPOS_CENTERED, 256, 300, 0);
+    // SDL_Window *window = SDL_CreateWindow("Space Invaders", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256, 300, 0);
+    SDL_Window *window = SDL_CreateWindow("Space Invaders", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256, 224, 0);
     if (!window)
     {
         printf("Error creating window: %s\n", SDL_GetError());
@@ -183,7 +186,10 @@ int main(int argc, char **argv)
 
     if (!FOR_CPUDIAG)
     {
-        fp = fopen("invaders.rom", "rb");
+        // fp = fopen("invaders.rom", "rb");
+        fp = fopen("8080EX1.COM", "rb");
+
+        
     }
     else
     {
@@ -244,49 +250,49 @@ int main(int argc, char **argv)
 
     // -------------------------------------------------------
 
-    SDL_Surface *text_l;
-    SDL_Surface *text_r;
-    SDL_Surface *text_shoot;
+    // SDL_Surface *text_l;
+    // SDL_Surface *text_r;
+    // SDL_Surface *text_shoot;
 
-    uint8_t r = 0;
+    // uint8_t r = 0;
 
-    if (r_port[1] >> 5 & 0x01)
-    {
-        r = 255;
-    }
+    // if (r_port[1] >> 5 & 0x01)
+    // {
+    //     r = 255;
+    // }
 
-    SDL_Color color_l = {r, 0, 0};
+    // SDL_Color color_l = {r, 0, 0};
 
-    text_l = TTF_RenderText_Solid(font, "Left", color_l);
-    SDL_Texture *text_texture_l;
-    text_texture_l = SDL_CreateTextureFromSurface(renderer, text_l);
+    // text_l = TTF_RenderText_Solid(font, "Left", color_l);
+    // SDL_Texture *text_texture_l;
+    // text_texture_l = SDL_CreateTextureFromSurface(renderer, text_l);
 
-    r = 0;
+    // r = 0;
 
-    if (r_port[1] >> 6 & 0x01)
-    {
-        r = 255;
-    }
-    SDL_Color color_r = {r, 0, 0};
+    // if (r_port[1] >> 6 & 0x01)
+    // {
+    //     r = 255;
+    // }
+    // SDL_Color color_r = {r, 0, 0};
 
-    text_r = TTF_RenderText_Solid(font, "Right", color_r);
-    SDL_Texture *text_texture_r;
-    text_texture_r = SDL_CreateTextureFromSurface(renderer, text_r);
+    // text_r = TTF_RenderText_Solid(font, "Right", color_r);
+    // SDL_Texture *text_texture_r;
+    // text_texture_r = SDL_CreateTextureFromSurface(renderer, text_r);
 
-    r = 0;
+    // r = 0;
 
-    if (r_port[1] >> 4 & 0x01)
-    {
-        r = 255;
-    }
-    SDL_Color color_shoot = {r, 0, 0};
+    // if (r_port[1] >> 4 & 0x01)
+    // {
+    //     r = 255;
+    // }
+    // SDL_Color color_shoot = {r, 0, 0};
 
-    text_shoot = TTF_RenderText_Solid(font, "Shoot", color_shoot);
-    SDL_Texture *text_texture_shoot;
-    text_texture_shoot = SDL_CreateTextureFromSurface(renderer, text_shoot);
+    // text_shoot = TTF_RenderText_Solid(font, "Shoot", color_shoot);
+    // SDL_Texture *text_texture_shoot;
+    // text_texture_shoot = SDL_CreateTextureFromSurface(renderer, text_shoot);
 
-    SDL_Rect states = {
-        0, 244, 256, 56};
+    // SDL_Rect states = {
+    //     0, 244, 256, 56};
 
     // -------------------------------------------------------
 
@@ -315,7 +321,7 @@ int main(int argc, char **argv)
             uint8_t port = code[1]; // the port is in the following byte
 
             state->a = MachineIN(port, state->a); //
-            state->pc+=2;
+            state->pc += 2;
             state->cycles += 3;
         }
         else if (*code == 0xd3)
@@ -325,9 +331,8 @@ int main(int argc, char **argv)
             uint8_t port = code[1]; // the data is in the following byte
 
             MachineOUT(port, state->a); // the value to be sent is stored in the accumulator before calling OUT
-            state->pc+=2;
+            state->pc += 2;
             state->cycles += 3;
-
         }
         else
         {
@@ -343,13 +348,12 @@ int main(int argc, char **argv)
                 ShowState(state);
             }
             // system("@cls||clear");
-            // printf("Cycles: %d\n", state->cycles);
-            printf("%d\n", instr_count);
+            // printf("C %d\n", state->cycles);
+            // printf("I %d\n", instr_count);
             opbytes = 1;
 
             // if (instr_count == 40000) exit(1);
             // if (state->pc == 0xada) exit(1);
-
         }
 
         // printf("CPU time: %d\n", SDL_GetTicks() - emul_time_start);
@@ -399,52 +403,103 @@ int main(int argc, char **argv)
             }
         }
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderFillRect(renderer, &states);
-
-        // Get the current time
-        current_time = clock();
+        // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        // SDL_RenderFillRect(renderer, &states);
 
         // Calculate the elapsed time in seconds
         // elapsed_time = ((double)(current_time - start_time)) / CLOCKS_PER_SEC;
 
-        int i, j, k;
-        for (i = 0; i < 256; i++)
+        // int i, j, k;
+        // for (i = 0; i < 256; i++)
+        // {
+        //     for (j = 0; j < 28; j++)
+        //     {
+        //         int offset = (i * 28) + j;
+        //             printf("(%d, %d): %04x\n", i, j, offset);
+        //         uint8_t render_pixels;
+        //         if (FOR_CPUDIAG)
+        //         {
+        //             render_pixels = state->memory[offset];
+        //         }
+        //         else
+        //         {
+        //             render_pixels = state->memory[0x2400 + offset];
+        //         }
+
+        //         for (k = 0; k < 8; k++)
+        //         {
+        //             // uint8_t pixel_state = (render_pixels >> (7 - k)) & 0x01;
+        //             uint8_t pixel_state = (render_pixels >> k) & 0x01;
+
+        //             // if (pixel_state)
+        //             // {
+        //             //     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        //             // }
+        //             // else
+        //             // {
+        //             //     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        //             // }
+
+        //             // SDL_RenderDrawPoint(renderer, i, offset + k);
+
+        //             // Calculate the actual x and y position for each pixel
+        //             int x = j * 8 + k; // Each byte represents 8 horizontal pixels
+        //             int y = i;         // Each row represents 1 vertical pixel
+
+        //             // Set the color based on the pixel state
+        //             // if (pixel_state)
+        //             // {
+        //             //     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White pixel
+        //             // }
+        //             // else
+        //             // {
+        //             //     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black pixel
+        //             // }
+
+        //             SDL_SetRenderDrawColor(renderer, 0, 157, 0, 255);
+        //             // Draw the pixel at the calculated (x, y) position
+        //              printf("(%d, %d): %04x\n", x, y, pixel_state);
+        //             SDL_RenderDrawPoint(renderer, x, y);
+        //         }
+        //     }
+        // }
+
+        // Create a texture for the screen (only once, outside of the main loop)
+        SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, 224, 256);
+
+        // // In the main rendering loop
+        int width = 224;  // Screen width (28 bytes * 8 bits)
+        int height = 256; // Screen height (256 rows)
+        uint32_t pixels[width * height]; // Pixel buffer for the texture
+
+        // Populate the pixel buffer
+        for (int i = 0; i < height; i++)
         {
-            for (j = 0; j < 28; j++)
+            for (int j = 0; j < (width / 8); j++)
             {
-                int offset = (i * 28) + j;
-                // printf("(%d, %d): %02x\n", i, j, state->memory[0x2400 + offset]);
-                uint8_t render_pixels;
-                if (FOR_CPUDIAG)
-                {
-                    render_pixels = state->memory[offset];
-                }
-                else
-                {
-                    render_pixels = state->memory[0x2400 + offset];
-                }
+                int offset = (i * (width / 8)) + j;
+                uint8_t render_pixels = state->memory[0x2400 + offset];
 
-                for (k = 0; k < 8; k++)
+                for (int k = 0; k < 8; k++)
                 {
-                    uint8_t pixel_state = (render_pixels >> k) & 0x01;
+                    uint8_t pixel_state = (render_pixels >> (7 - k)) & 0x01;
 
-                    if (pixel_state)
-                    {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                    }
-                    else
-                    {
-                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                    }
+                    // Calculate x and y positions
+                    int x = j * 8 + k;
+                    int y = i;
 
-                    SDL_RenderDrawPoint(renderer, i, j);
+                    // Set pixel color in the buffer (white for 1, black for 0)
+                    pixels[y * width + x] = pixel_state ? 0xFFFFFFFF : (0x00000000 + (uint8_t)(i*j)); // White or black
                 }
             }
         }
+
+        // Update the texture with the new pixel data
+        SDL_UpdateTexture(texture, NULL, pixels, width * sizeof(uint32_t));
+        // exit(1);
 
         frame_count++;
 
@@ -456,7 +511,7 @@ int main(int argc, char **argv)
             {
                 Interrupt(state, 1);
                 opbytes = 1;
-                printf("Mid screen interrupt generated\n");
+                // printf("1/2 VBL\n");
             }
         }
 
@@ -467,24 +522,21 @@ int main(int argc, char **argv)
             // Reset the start time to the current time for the next loop
             last_frame_time = current_time;
 
-            if (elapsed_time > max_elapsed)
-            {
-                max_elapsed = elapsed_time;
-            }
-
             if (state->int_enabled)
             {
                 Interrupt(state, 2);
                 opbytes = 1;
-                printf("VBL interrupt generated\n");
+                // printf("VBL\n");
             }
         }
 
-        SDL_RenderCopy(renderer, text_texture_l, NULL, &(SDL_Rect){0, 244, text_l->w, text_l->h});
-        SDL_RenderCopy(renderer, text_texture_r, NULL, &(SDL_Rect){text_l->w + 10, 244, text_r->w, text_r->h});
-        SDL_RenderCopy(renderer, text_texture_shoot, NULL, &(SDL_Rect){0, 244 + text_l->h + 5, text_shoot->w, text_shoot->h});
+        // SDL_RenderCopy(renderer, text_texture_l, NULL, &(SDL_Rect){0, 244, text_l->w, text_l->h});
+        // SDL_RenderCopy(renderer, text_texture_r, NULL, &(SDL_Rect){text_l->w + 10, 244, text_r->w, text_r->h});
+        // SDL_RenderCopy(renderer, text_texture_shoot, NULL, &(SDL_Rect){0, 244 + text_l->h + 5, text_shoot->w, text_shoot->h});
 
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+        
 
         // printf("Render time: %d\n", SDL_GetTicks() - emul_time_start);
 
@@ -497,15 +549,17 @@ int main(int argc, char **argv)
             printf("Max elapsed %.4f\n", max_elapsed);
             printf("Frames displayed %d\n", frame_count);
         }
+
+        SDL_DestroyTexture(texture);
     }
 
-    SDL_DestroyTexture(text_texture_l);
-    SDL_DestroyTexture(text_texture_r);
-    SDL_DestroyTexture(text_texture_shoot);
+    // SDL_DestroyTexture(text_texture_l);
+    // SDL_DestroyTexture(text_texture_r);
+    // SDL_DestroyTexture(text_texture_shoot);
 
-    SDL_FreeSurface(text_l);
-    SDL_FreeSurface(text_r);
-    SDL_FreeSurface(text_shoot);
+    // SDL_FreeSurface(text_l);
+    // SDL_FreeSurface(text_r);
+    // SDL_FreeSurface(text_shoot);
 
     SDL_DestroyWindow(window);
     TTF_CloseFont(font);
